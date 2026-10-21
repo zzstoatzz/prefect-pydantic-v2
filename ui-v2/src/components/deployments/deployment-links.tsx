@@ -9,7 +9,7 @@ type DeploymentLinksProps = {
 
 export const DeploymentLinks = ({ deployment }: DeploymentLinksProps) => {
 	return (
-		<div className="flex items-center gap-4">
+		<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
 			<FlowLink flowId={deployment.flow_id} />
 			{deployment.work_pool_name && (
 				<WorkPoolLink workPoolName={deployment.work_pool_name} />

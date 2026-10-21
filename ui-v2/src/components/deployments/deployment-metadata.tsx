@@ -21,7 +21,7 @@ const FieldValue = ({
 }: {
 	className?: string;
 	children: React.ReactNode;
-}) => <dd className={cn("text-sm", className)}>{children}</dd>;
+}) => <dd className={cn("text-sm wrap-anywhere", className)}>{children}</dd>;
 
 export const DeploymentMetadata = ({ deployment }: DeploymentMetadataProps) => {
 	const navigate = useNavigate();

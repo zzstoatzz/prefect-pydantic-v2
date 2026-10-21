@@ -21,15 +21,16 @@ const FlowLinkImplementation = ({ flowId }: FlowLinkProps) => {
 	const { data: flow } = useSuspenseQuery(buildFLowDetailsQuery(flowId));
 
 	return (
-		<div className="flex items-center gap-1 text-xs">
+		<div className="flex min-w-0 max-w-full items-center gap-1 text-xs">
 			Flow
 			<Link
 				to="/flows/flow/$id"
 				params={{ id: flow.id }}
-				className="flex items-center gap-1"
+				className="flex min-w-0 items-center gap-1"
+				title={flow.name}
 			>
-				<Icon id="Workflow" className="size-4" />
-				{flow.name}
+				<Icon id="Workflow" className="size-4 shrink-0" />
+				<span className="truncate">{flow.name}</span>
 			</Link>
 		</div>
 	);
