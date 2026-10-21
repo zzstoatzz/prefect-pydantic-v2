@@ -193,7 +193,7 @@ export function FlowRunGraph({
 	const heightClass = fullscreen
 		? "fixed inset-0 z-50 bg-background"
 		: hasNodes
-			? "relative h-96 w-full"
+			? "relative h-64 w-full md:h-96"
 			: "relative h-40 w-full";
 
 	return (

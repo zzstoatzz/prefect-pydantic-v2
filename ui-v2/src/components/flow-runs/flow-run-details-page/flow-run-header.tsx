@@ -193,7 +193,7 @@ export function FlowRunHeader({ flowRun, onDeleteClick }: FlowRunHeaderProps) {
 				</Breadcrumb>
 
 				{/* Row 2 - Meta */}
-				<div className="flex items-center gap-4 text-sm text-muted-foreground">
+				<div className="flex flex-wrap items-center gap-x-4 gap-y-1 whitespace-nowrap text-sm text-muted-foreground">
 					{flowRun.state_type && flowRun.state_name && (
 						<StateBadge type={flowRun.state_type} name={flowRun.state_name} />
 					)}
