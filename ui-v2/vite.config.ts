@@ -3,6 +3,12 @@ import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+// Worker threads share the main process's timezone, so `test.env.TZ` alone
+// does not reach them; set it here before vitest spawns its pool.
+if (process.env.VITEST) {
+	process.env.TZ = "UTC";
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
 	const base =
