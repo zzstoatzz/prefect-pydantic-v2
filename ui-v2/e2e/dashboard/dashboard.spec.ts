@@ -293,4 +293,34 @@ test.describe("Dashboard Page", () => {
 			}
 		});
 	});
+
+	test.describe("Narrow Screens", () => {
+		test("keeps the sidebar toggle above the page heading after scrolling the main region", async ({
+			page,
+		}) => {
+			await page.setViewportSize({ width: 390, height: 844 });
+			await page.goto("/dashboard");
+			await waitForDashboardReady(page);
+
+			const toggle = page.getByRole("button", { name: /toggle sidebar/i });
+			const heading = page
+				.locator("main")
+				.getByText("Dashboard", { exact: true })
+				.first();
+			await expect(toggle).toBeVisible();
+
+			await page.evaluate(() => {
+				const main = document.querySelector("main");
+				if (main) main.scrollTop = main.scrollHeight;
+				window.scrollTo(0, 0);
+			});
+
+			const toggleBox = await toggle.boundingBox();
+			const headingBox = await heading.boundingBox();
+			if (!toggleBox || !headingBox) {
+				throw new Error("sidebar toggle or page heading is not rendered");
+			}
+			expect(toggleBox.y + toggleBox.height).toBeLessThanOrEqual(headingBox.y);
+		});
+	});
 });

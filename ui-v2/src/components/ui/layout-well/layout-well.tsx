@@ -23,7 +23,12 @@ type LayoutWellContentProps = {
 
 export const LayoutWell = ({ children, className }: LayoutWellProps) => {
 	return (
-		<div className={cn("min-h-full bg-background", className)}>
+		<div
+			className={cn(
+				"min-h-full bg-background max-md:min-h-auto max-md:flex-1",
+				className,
+			)}
+		>
 			<div className="w-full">
 				<div className="flex flex-col lg:flex-row lg:gap-8">{children}</div>
 			</div>
