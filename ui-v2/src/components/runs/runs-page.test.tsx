@@ -260,6 +260,29 @@ describe("Runs page", () => {
 		});
 	});
 
+	describe("More filters toggle", () => {
+		it("should expand and collapse the secondary filters", async () => {
+			const user = userEvent.setup();
+			setupFlowRunsHandlers();
+			await renderRunsPage();
+
+			const toggle = await screen.findByRole("button", {
+				name: /more filters/i,
+			});
+			expect(toggle).toHaveAttribute("aria-expanded", "false");
+			expect(toggle).toHaveAttribute("aria-controls", "runs-more-filters");
+
+			await user.click(toggle);
+
+			expect(toggle).toHaveAttribute("aria-expanded", "true");
+			expect(toggle).toHaveTextContent(/fewer filters/i);
+
+			await user.click(toggle);
+
+			expect(toggle).toHaveAttribute("aria-expanded", "false");
+		});
+	});
+
 	describe("Pagination reset", () => {
 		it("should reset both flow and task run pagination when shared filters change", async () => {
 			const user = userEvent.setup();

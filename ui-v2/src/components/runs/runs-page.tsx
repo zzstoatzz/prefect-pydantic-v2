@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ChangeEvent } from "react";
+import { type ChangeEvent, useState } from "react";
 import type { FlowRun, SimpleFlowRun } from "@/api/flow-runs";
 import { buildListFlowsQuery } from "@/api/flows";
 import type { TaskRunResponse } from "@/api/task-runs";
@@ -48,11 +48,13 @@ import {
 	EmptyStateIcon,
 	EmptyStateTitle,
 } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icons";
 import { SearchInput } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TagsInput } from "@/components/ui/tags-input";
+import { cn } from "@/utils";
 import { SaveFilterDialog } from "./save-filter-dialog";
 import { isSystemFilter } from "./use-saved-filters";
 
@@ -178,6 +180,13 @@ export const RunsPage = ({
 	// Use unfiltered counts for empty state check (no runs exist at all)
 	const isEmpty = !hasAnyFlowRuns && !hasAnyTaskRuns;
 
+	const [showMoreFilters, setShowMoreFilters] = useState(false);
+	const moreFiltersCount =
+		selectedFlows.size +
+		selectedDeployments.size +
+		selectedWorkPools.size +
+		selectedTags.size;
+
 	// Flow runs selection
 	const [selectedRows, setSelectedRows, { onSelectRow }] =
 		useFlowRunsSelectedRows();
@@ -254,7 +263,28 @@ export const RunsPage = ({
 						/>
 					</div>
 				</div>
-				<div className="flex flex-wrap gap-2 lg:grid lg:grid-flow-col lg:auto-cols-fr">
+				<Button
+					variant="outline"
+					size="sm"
+					className="self-start lg:hidden"
+					aria-expanded={showMoreFilters}
+					aria-controls="runs-more-filters"
+					onClick={() => setShowMoreFilters((open) => !open)}
+				>
+					{showMoreFilters ? "Fewer filters" : "More filters"}
+					{moreFiltersCount > 0 && ` (${moreFiltersCount})`}
+					<Icon
+						id="ChevronDown"
+						className={cn("size-4", showMoreFilters && "rotate-180")}
+					/>
+				</Button>
+				<div
+					id="runs-more-filters"
+					className={cn(
+						"flex-wrap gap-2 lg:grid lg:grid-flow-col lg:auto-cols-fr",
+						showMoreFilters ? "flex" : "hidden",
+					)}
+				>
 					<div className="flex flex-col gap-1 w-full lg:w-auto">
 						<Label className="text-xs text-muted-foreground">Flows</Label>
 						<FlowFilter
@@ -301,7 +331,7 @@ export const RunsPage = ({
 				</TabsList>
 				<TabsContent value="flow-runs">
 					<div className="flex flex-col gap-4">
-						<Card>
+						<Card className="max-md:hidden">
 							<CardContent>
 								<FlowRunsScatterPlot
 									history={flowRunHistory}
@@ -310,14 +340,14 @@ export const RunsPage = ({
 								/>
 							</CardContent>
 						</Card>
-						<div className="flex items-center justify-between">
+						<div className="flex flex-wrap items-center justify-between gap-2">
 							<FlowRunsRowCount
 								count={flowRunsCount}
 								results={flowRunsWithFlows}
 								selectedRows={selectedRows}
 								setSelectedRows={setSelectedRows}
 							/>
-							<div className="flex items-center gap-4">
+							<div className="contents lg:flex lg:items-center lg:gap-4">
 								<div className="flex items-center gap-2 whitespace-nowrap">
 									<Switch
 										id="hide-subflows"
@@ -331,7 +361,7 @@ export const RunsPage = ({
 									onChange={(e) => onFlowRunSearchChange(e.target.value)}
 									placeholder="Search by flow run name"
 									aria-label="Search by flow run name"
-									className="w-64"
+									className="min-w-0 flex-1 basis-48 lg:w-64 lg:flex-none"
 									debounceMs={1200}
 								/>
 								<SortFilter value={sort} onSelect={onSortChange} />
@@ -361,20 +391,20 @@ export const RunsPage = ({
 				</TabsContent>
 				<TabsContent value="task-runs">
 					<div className="flex flex-col gap-4">
-						<div className="flex items-center justify-between">
+						<div className="flex flex-wrap items-center justify-between gap-2">
 							<TaskRunsRowCount
 								count={taskRunsCount}
 								results={taskRuns}
 								selectedRows={taskRunsSelectedRows}
 								setSelectedRows={setTaskRunsSelectedRows}
 							/>
-							<div className="flex items-center gap-4">
+							<div className="contents lg:flex lg:items-center lg:gap-4">
 								<SearchInput
 									value={taskRunSearch}
 									onChange={(e) => onTaskRunSearchChange(e.target.value)}
 									placeholder="Search by task run name"
 									aria-label="Search by task run name"
-									className="w-64"
+									className="min-w-0 flex-1 basis-48 lg:w-64 lg:flex-none"
 									debounceMs={1200}
 								/>
 								<TaskRunsSortFilter

@@ -31,7 +31,7 @@ export const FlowRunName = ({ flowRun }: FlowRunNameProps) => {
 						</BreadcrumbItem>
 					)}
 					{flow && <BreadcrumbSeparator>/</BreadcrumbSeparator>}
-					<BreadcrumbItem className="font-bold text-base min-w-0">
+					<BreadcrumbItem className="font-bold text-base min-w-0 shrink-0 max-w-[75%]">
 						<BreadcrumbLink
 							to="/runs/flow-run/$id"
 							params={{ id: flowRun.id }}
