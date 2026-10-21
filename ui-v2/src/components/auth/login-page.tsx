@@ -35,7 +35,7 @@ export function LoginPage({ redirectTo = "/dashboard" }: LoginPageProps) {
 	};
 
 	return (
-		<div className="flex items-center justify-center min-h-screen">
+		<div className="flex items-center justify-center min-h-screen px-4">
 			<Card className="w-full max-w-[400px]">
 				<CardHeader className="flex flex-col items-center gap-4">
 					<PrefectLogo className="size-16" />
