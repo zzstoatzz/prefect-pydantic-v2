@@ -1069,7 +1069,7 @@ export function RouteComponent() {
 							{!isEmpty && (
 								<div className="flex flex-col w-full max-w-full gap-2 md:w-auto md:inline-flex md:flex-row items-center">
 									{/* Filters */}
-									<div className="flex items-center gap-2 w-full md:w-auto">
+									<div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:flex-nowrap">
 										<div className="pr-2 w-full md:w-auto flex items-center gap-2">
 											<Switch
 												id="hide-subflows"
@@ -1078,14 +1078,14 @@ export function RouteComponent() {
 											/>
 											<Label htmlFor="hide-subflows">Hide subflows</Label>
 										</div>
-										<div className="min-w-0 w-60">
+										<div className="min-w-0 w-full md:w-60">
 											<FlowRunTagsSelect
 												value={tags}
 												onChange={onTagsChange}
 												placeholder="All tags"
 											/>
 										</div>
-										<div className="min-w-0">
+										<div className="min-w-0 w-full md:w-auto">
 											<RichDateRangeSelector
 												value={dateRangeValue}
 												onValueChange={onDateRangeChange}
