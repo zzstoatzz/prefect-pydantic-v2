@@ -43,7 +43,7 @@ function EventTimestamp({ occurred }: { occurred: string }) {
 	const formattedDate = format(date, "MMM do, yyyy");
 
 	return (
-		<div className="flex flex-col text-right text-sm w-24 shrink-0">
+		<div className="flex text-sm max-md:col-start-2 max-md:row-start-1 max-md:items-baseline max-md:gap-2 md:w-24 md:shrink-0 md:flex-col md:text-right">
 			<span>{formattedTime}</span>
 			<span className="text-xs text-muted-foreground">{formattedDate}</span>
 		</div>
@@ -56,7 +56,7 @@ function TimelinePoint({ event, isLast }: { event: Event; isLast: boolean }) {
 	const iconId = RESOURCE_ICONS[resourceType];
 
 	return (
-		<div className="relative flex items-start justify-center w-10 h-full">
+		<div className="relative flex items-start justify-center w-10 h-full max-md:col-start-1 max-md:row-span-2 max-md:row-start-1">
 			{/* Vertical line - extends from top to bottom, hidden for last item below the icon */}
 			<div
 				className={cn(
@@ -197,7 +197,7 @@ function EventTimelineItem({ event, isLast }: EventTimelineItemProps) {
 	const [isOpen, setIsOpen] = useState(false);
 
 	return (
-		<div className="grid grid-cols-[6rem_2.5rem_1fr] gap-4 items-start py-4">
+		<div className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-3 gap-y-2 items-start py-4 md:grid-cols-[6rem_2.5rem_1fr] md:gap-4">
 			{/* Date column */}
 			<EventTimestamp occurred={event.occurred} />
 
