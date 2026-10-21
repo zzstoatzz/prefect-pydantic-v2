@@ -193,7 +193,7 @@ export function DataTable<TData extends RowData>({
 					</TableBody>
 				</Table>
 			</div>
-			<div className="flex flex-row justify-between items-center">
+			<div className="flex flex-row justify-between items-center max-md:flex-wrap max-md:gap-2">
 				<DataTablePageSize table={table} />
 				<DataTablePagination table={table} onPrefetchPage={onPrefetchPage} />
 			</div>

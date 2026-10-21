@@ -76,7 +76,7 @@ export const TaskRunsPagination = ({
 	};
 
 	return (
-		<div className="flex flex-row justify-between items-center">
+		<div className="flex flex-row justify-between items-center max-md:flex-wrap max-md:gap-2">
 			<div className="flex flex-row items-center gap-2 text-xs text-muted-foreground">
 				<span className="whitespace-nowrap">Items per page</span>
 				<Select

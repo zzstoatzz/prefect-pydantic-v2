@@ -44,7 +44,11 @@ type PaginationItemProps = React.ComponentProps<"li"> & {
 
 const PaginationItem = React.forwardRef<HTMLLIElement, PaginationItemProps>(
 	({ className, ...props }, ref) => (
-		<li ref={ref} className={cn("", className)} {...props} />
+		<li
+			ref={ref}
+			className={cn("shrink-0 whitespace-nowrap", className)}
+			{...props}
+		/>
 	),
 );
 PaginationItem.displayName = "PaginationItem";
