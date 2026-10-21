@@ -109,7 +109,7 @@ export const RunLogs = ({
 		<div
 			ref={parentRef}
 			className={cn(
-				"bg-muted rounded-md font-mono p-4 overflow-y-auto",
+				"bg-muted rounded-md font-mono p-4 max-md:p-3 overflow-y-auto",
 				className,
 			)}
 			role="log"
@@ -156,14 +156,14 @@ type RunLogRowProps = {
 
 const RunLogRow = ({ log, taskRunName }: RunLogRowProps) => {
 	return (
-		<div className="grid grid-cols-[84px_minmax(0,1fr)_150px] gap-2 text-sm py-2">
+		<div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2 text-sm py-2 md:grid-cols-[84px_minmax(0,1fr)_150px]">
 			<div>
 				<LogLevelBadge level={log.level} />
 			</div>
-			<div className="select-auto whitespace-pre-wrap break-words">
+			<div className="select-auto whitespace-pre-wrap break-words max-md:order-last max-md:col-span-2">
 				{renderLogMessage(log.message)}
 			</div>
-			<div className="text-xs grid grid-cols-1 gap-1 justify-items-end text-muted-foreground truncate">
+			<div className="text-xs flex flex-wrap items-center justify-end gap-x-2 gap-y-1 min-w-0 text-muted-foreground md:grid md:grid-cols-1 md:items-stretch md:gap-1 md:justify-items-end md:truncate">
 				<span>{format(log.timestamp, "pp")}</span>
 				{taskRunName && <span>{taskRunName}</span>}
 				<span className="font-bold break-all whitespace-normal">
