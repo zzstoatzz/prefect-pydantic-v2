@@ -92,7 +92,8 @@ type RunsPageProps = {
 	dateRange: DateRangeUrlState;
 	onDateRangeChange: (dateRange: DateRangeUrlState) => void;
 	// Scatter plot props
-	flowRunHistory: SimpleFlowRun[];
+	/** Undefined while the history is loading. */
+	flowRunHistory: SimpleFlowRun[] | undefined;
 	scatterPlotDateRange: { startDate?: Date; endDate?: Date };
 	// Task runs props
 	taskRuns: TaskRunResponse[];
@@ -331,12 +332,20 @@ export const RunsPage = ({
 				</TabsList>
 				<TabsContent value="flow-runs">
 					<div className="flex flex-col gap-4">
-						<Card className="max-md:hidden">
+						<Card>
 							<CardContent>
 								<FlowRunsScatterPlot
 									history={flowRunHistory}
 									startDate={scatterPlotDateRange.startDate}
 									endDate={scatterPlotDateRange.endDate}
+									totalCount={flowRunsCount}
+									onRangeChange={({ startDate, endDate }) =>
+										onDateRangeChange({
+											range: undefined,
+											start: startDate.toISOString(),
+											end: endDate.toISOString(),
+										})
+									}
 								/>
 							</CardContent>
 						</Card>
