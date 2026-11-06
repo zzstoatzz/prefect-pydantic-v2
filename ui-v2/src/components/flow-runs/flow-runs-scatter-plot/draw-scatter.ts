@@ -34,7 +34,6 @@ export type ScatterScene = {
 	unloadedUntilX: number | undefined;
 	nowX: number | undefined;
 	activeId: string | undefined;
-	emphasis: ReadonlySet<StateType>;
 	brush: { from: number; to: number } | undefined;
 	palette: ScatterPalette;
 	fontFamily: string;
@@ -141,15 +140,14 @@ const drawTimeAxis = (ctx: CanvasRenderingContext2D, scene: ScatterScene) => {
 };
 
 const drawPoints = (ctx: CanvasRenderingContext2D, scene: ScatterScene) => {
-	const { palette, radius, emphasis } = scene;
+	const { palette, radius } = scene;
 	ctx.save();
 	ctx.lineWidth = 1.75;
 	for (const { run, x, y } of scene.points) {
 		const color = palette.state[run.state_type];
-		const dimmed = emphasis.size > 0 && !emphasis.has(run.state_type);
 		const ring = NOT_STARTED_STATES.has(run.state_type);
 		const quiet = run.state_type === "COMPLETED";
-		ctx.globalAlpha = dimmed ? 0.12 : ring ? 1 : quiet ? 0.55 : 0.9;
+		ctx.globalAlpha = ring ? 1 : quiet ? 0.55 : 0.9;
 		ctx.beginPath();
 		ctx.arc(x, y, ring ? radius - 0.5 : radius, 0, Math.PI * 2);
 		if (ring) {

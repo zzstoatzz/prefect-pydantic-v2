@@ -11,9 +11,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { buildApiUrl, createWrapper, server } from "@tests/utils";
 import { HttpResponse, http } from "msw";
-import type { ComponentProps } from "react";
+import { type ComponentProps, type ReactNode, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SimpleFlowRun } from "@/api/flow-runs";
+import type { FlowRunState } from "@/components/flow-runs/flow-runs-list";
 import {
 	createFakeFlow,
 	createFakeFlowRun,
@@ -43,15 +44,38 @@ const completed = createFakeSimpleFlowRun({
 	lateness: 0,
 });
 
+type PlotProps = ComponentProps<typeof FlowRunsScatterPlot>;
+
+const PlotWithStateFilter = ({
+	selectedStates: initialStates,
+	onSelectedStatesChange,
+	...props
+}: PlotProps) => {
+	const [selectedStates, setSelectedStates] = useState(
+		() => new Set(initialStates),
+	);
+	return (
+		<FlowRunsScatterPlot
+			{...props}
+			selectedStates={selectedStates}
+			onSelectedStatesChange={(states) => {
+				onSelectedStatesChange?.(states);
+				setSelectedStates(states);
+			}}
+		/>
+	);
+};
+
 const renderPlot = (
-	props: Partial<ComponentProps<typeof FlowRunsScatterPlot>> = {},
+	props: Partial<PlotProps> = {},
+	Plot: (props: PlotProps) => ReactNode = PlotWithStateFilter,
 ) => {
 	const rootRoute = createRootRoute({ component: Outlet });
 	const plotRoute = createRoute({
 		getParentRoute: () => rootRoute,
 		path: "/",
 		component: () => (
-			<FlowRunsScatterPlot
+			<Plot
 				history={[completed, crashed]}
 				startDate={START}
 				endDate={END}
@@ -273,15 +297,47 @@ describe("FlowRunsScatterPlot", () => {
 		expect(onRangeChange).not.toHaveBeenCalled();
 	});
 
-	it("highlights states from the legend", async () => {
+	it("filters to one state from the legend and restores the filter", async () => {
 		const user = userEvent.setup();
-		renderPlot();
+		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();
+		renderPlot({
+			selectedStates: new Set(["Completed", "Crashed"]),
+			onSelectedStatesChange,
+		});
 
 		const chip = await screen.findByRole("button", { name: /Crashed/ });
 		await user.click(chip);
+		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
+			new Set(["Crashed"]),
+		);
 		expect(chip).toHaveAttribute("aria-pressed", "true");
+
 		await user.click(chip);
+		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
+			new Set(["Completed", "Crashed"]),
+		);
 		expect(chip).toHaveAttribute("aria-pressed", "false");
+	});
+
+	it("hides a state on shift-click", async () => {
+		const user = userEvent.setup();
+		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();
+		renderPlot({ onSelectedStatesChange });
+
+		await user.keyboard("{Shift>}");
+		await user.click(await screen.findByRole("button", { name: /Completed/ }));
+
+		const [states] = onSelectedStatesChange.mock.lastCall ?? [];
+		expect(states?.has("Completed")).toBe(false);
+		expect(states?.has("Cached")).toBe(false);
+		expect(states?.has("Crashed")).toBe(true);
+	});
+
+	it("shows a plain key when it cannot set the filter", async () => {
+		renderPlot({}, FlowRunsScatterPlot);
+
+		expect(await screen.findByText("Completed")).toBeVisible();
+		expect(screen.queryByRole("button", { name: /Completed/ })).toBeNull();
 	});
 
 	it("leaves out runs scheduled after an open-ended window", async () => {

@@ -1,5 +1,10 @@
 import type { SimpleFlowRun } from "@/api/flow-runs";
 import type { components } from "@/api/prefect";
+import {
+	FLOW_RUN_STATES,
+	FLOW_RUN_STATES_MAP,
+	type FlowRunState,
+} from "@/components/flow-runs/flow-runs-list/flow-runs-filters/state-filters.constants";
 
 type StateType = components["schemas"]["StateType"];
 
@@ -323,3 +328,28 @@ export const createXAxisTickFormatter = () => {
 		return date.getFullYear().toString();
 	};
 };
+
+/** The one state type a state-name filter selects, if it selects only one. */
+export const isolatedStateType = (
+	selected: ReadonlySet<FlowRunState>,
+): StateType | undefined => {
+	const types = new Set(
+		Array.from(selected, (name) => FLOW_RUN_STATES_MAP[name]),
+	);
+	const [only] = types;
+	return types.size === 1 ? only : undefined;
+};
+
+export const stateNamesOfType = (type: StateType): Set<FlowRunState> =>
+	new Set(FLOW_RUN_STATES.filter((name) => FLOW_RUN_STATES_MAP[name] === type));
+
+/** Removes a state type from a state-name filter, where empty means every state. */
+export const withoutStateType = (
+	selected: ReadonlySet<FlowRunState>,
+	type: StateType,
+): Set<FlowRunState> =>
+	new Set(
+		Array.from(selected.size > 0 ? selected : FLOW_RUN_STATES).filter(
+			(name) => FLOW_RUN_STATES_MAP[name] !== type,
+		),
+	);

@@ -75,6 +75,8 @@ export default {
 		endDate: new Date(NOW),
 		totalCount: 300,
 		onRangeChange: fn(),
+		selectedStates: new Set(),
+		onSelectedStatesChange: fn(),
 	},
 	decorators: [reactQueryDecorator, routerDecorator],
 	render: function Render(args: ComponentProps<typeof FlowRunsScatterPlot>) {

@@ -6,10 +6,13 @@ import {
 	findNearestPoint,
 	formatDuration,
 	HISTORY_LIMIT,
+	isolatedStateType,
 	loadedSince,
 	resolveTimeWindow,
+	stateNamesOfType,
 	summarizeRuns,
 	thinTicks,
+	withoutStateType,
 } from "./scatter-plot-utils";
 
 const HOUR = 60 * 60 * 1000;
@@ -252,5 +255,29 @@ describe("createXAxisTickFormatter", () => {
 	it("formats year when crossing year boundary", () => {
 		const date = new Date("2024-01-01T00:00:00.000Z");
 		expect(formatter(date.getTime())).toMatch(/2024|January|Jan|Mon|1/i);
+	});
+});
+
+describe("state filter helpers", () => {
+	it("finds the one state type a filter selects", () => {
+		expect(isolatedStateType(new Set(["Failed", "TimedOut"]))).toBe("FAILED");
+		expect(isolatedStateType(new Set(["Failed", "Crashed"]))).toBeUndefined();
+		expect(isolatedStateType(new Set())).toBeUndefined();
+	});
+
+	it("selects every state name of a type", () => {
+		expect(stateNamesOfType("COMPLETED")).toEqual(
+			new Set(["Completed", "Cached"]),
+		);
+	});
+
+	it("hides a type from a filter, treating an empty filter as every state", () => {
+		const remaining = withoutStateType(new Set(), "COMPLETED");
+		expect(remaining.has("Completed")).toBe(false);
+		expect(remaining.has("Cached")).toBe(false);
+		expect(remaining.has("Failed")).toBe(true);
+		expect(withoutStateType(new Set(["Failed", "Crashed"]), "FAILED")).toEqual(
+			new Set(["Crashed"]),
+		);
 	});
 });

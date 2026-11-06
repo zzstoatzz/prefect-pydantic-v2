@@ -13,6 +13,7 @@ import {
 } from "react";
 import type { SimpleFlowRun } from "@/api/flow-runs";
 import type { components } from "@/api/prefect";
+import type { FlowRunState } from "@/components/flow-runs/flow-runs-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAllStateColors } from "@/utils/state-colors";
 import {
@@ -45,6 +46,9 @@ type FlowRunsScatterPlotProps = {
 	totalCount?: number;
 	/** Called with the span a person drags across; omit to disable zooming. */
 	onRangeChange?: (range: { startDate: Date; endDate: Date }) => void;
+	/** The page's state filter, which the legend chips set. */
+	selectedStates?: ReadonlySet<FlowRunState>;
+	onSelectedStatesChange?: (states: Set<FlowRunState>) => void;
 };
 
 const MARGIN = { top: 10, right: 12, bottom: 22, left: 46 };
@@ -67,6 +71,8 @@ export const FlowRunsScatterPlot = ({
 	endDate,
 	totalCount,
 	onRangeChange,
+	selectedStates,
+	onSelectedStatesChange,
 }: FlowRunsScatterPlotProps) => {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -77,9 +83,6 @@ export const FlowRunsScatterPlot = ({
 
 	const [hoverId, setHoverId] = useState<string>();
 	const [pinnedId, setPinnedId] = useState<string>();
-	const [emphasis, setEmphasis] = useState<ReadonlySet<StateType>>(
-		() => new Set(),
-	);
 	const [brush, setBrush] = useState<{ from: number; to: number }>();
 	const gesture = useRef<{
 		pointerId: number;
@@ -223,12 +226,11 @@ export const FlowRunsScatterPlot = ({
 		drawScatter(ctx, {
 			...layout,
 			activeId: activeRun?.id,
-			emphasis,
 			brush,
 			palette,
 			fontFamily: getComputedStyle(canvas).fontFamily,
 		});
-	}, [layout, activeRun, emphasis, brush, palette]);
+	}, [layout, activeRun, brush, palette]);
 
 	const openRun = useCallback(
 		(id: string, newTab: boolean) => {
@@ -244,14 +246,6 @@ export const FlowRunsScatterPlot = ({
 		},
 		[navigate, router],
 	);
-
-	const toggleEmphasis = useCallback((state: StateType) => {
-		setEmphasis((current) => {
-			const next = new Set(current);
-			if (!next.delete(state)) next.add(state);
-			return next;
-		});
-	}, []);
 
 	const localPoint = (event: PointerEvent<HTMLCanvasElement>) => {
 		const bounds = event.currentTarget.getBoundingClientRect();
@@ -379,8 +373,8 @@ export const FlowRunsScatterPlot = ({
 		<div className="flex flex-col gap-3" data-testid="scatter-plot">
 			<ScatterPlotLegend
 				summary={summary}
-				emphasis={emphasis}
-				onToggle={toggleEmphasis}
+				selectedStates={selectedStates}
+				onSelectedStatesChange={onSelectedStatesChange}
 			/>
 			<div ref={containerRef} className="relative h-52 w-full md:h-72">
 				<canvas

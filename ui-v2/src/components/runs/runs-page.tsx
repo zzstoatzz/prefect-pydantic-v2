@@ -346,6 +346,8 @@ export const RunsPage = ({
 											end: endDate.toISOString(),
 										})
 									}
+									selectedStates={selectedStates}
+									onSelectedStatesChange={onStateFilterChange}
 								/>
 							</CardContent>
 						</Card>
