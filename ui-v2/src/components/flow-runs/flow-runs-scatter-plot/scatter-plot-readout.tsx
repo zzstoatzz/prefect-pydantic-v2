@@ -129,7 +129,7 @@ const RunReadout = ({ run }: { run: SimpleFlowRun }) => {
 				{run.lateness >= 1 && (
 					<span className="inline-flex items-center gap-1.5">
 						<Hourglass className="size-3.5" aria-hidden />
-						{formatDuration(run.lateness)} late
+						{formatDuration(run.lateness)} after scheduled start
 					</span>
 				)}
 			</div>
