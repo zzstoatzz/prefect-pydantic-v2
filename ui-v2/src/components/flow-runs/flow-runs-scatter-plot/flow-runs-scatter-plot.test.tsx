@@ -319,6 +319,28 @@ describe("FlowRunsScatterPlot", () => {
 		expect(chip).toHaveAttribute("aria-pressed", "false");
 	});
 
+	it("restores the filter from before the first chip after switching chips", async () => {
+		const user = userEvent.setup();
+		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();
+		renderPlot({
+			selectedStates: new Set(["Completed", "Crashed"]),
+			onSelectedStatesChange,
+		});
+
+		await user.click(await screen.findByRole("button", { name: /Crashed/ }));
+		const completedChip = screen.getByRole("button", { name: /Completed/ });
+		await user.click(completedChip);
+		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
+			new Set(["Completed", "Cached"]),
+		);
+
+		await user.click(completedChip);
+		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
+			new Set(["Completed", "Crashed"]),
+		);
+		expect(completedChip).toHaveAttribute("aria-pressed", "false");
+	});
+
 	it("keeps a chip for every counted state while one is selected", async () => {
 		const user = userEvent.setup();
 		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();

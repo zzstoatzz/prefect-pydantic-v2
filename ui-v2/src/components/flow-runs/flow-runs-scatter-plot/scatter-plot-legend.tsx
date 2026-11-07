@@ -79,7 +79,7 @@ export const ScatterPlotLegend = ({
 			restoreTo.current = undefined;
 			return;
 		}
-		restoreTo.current = new Set(selectedStates);
+		if (isolated === undefined) restoreTo.current = new Set(selectedStates);
 		onSelectedStatesChange(stateNamesOfType(state));
 	};
 
