@@ -334,7 +334,7 @@ export const RunsPage = ({
 				</TabsList>
 				<TabsContent value="flow-runs">
 					<div className="flex flex-col gap-4">
-						<Card className="max-md:hidden">
+						<Card>
 							<CardContent>
 								<FlowRunsScatterPlot
 									history={flowRunHistory}
