@@ -5,7 +5,7 @@ import { cn } from "@/utils";
 import {
 	isolatedStateType,
 	NOT_STARTED_STATES,
-	type RunsSummary,
+	type StateCount,
 	stateNamesOfType,
 	withoutStateType,
 } from "./scatter-plot-utils";
@@ -13,7 +13,8 @@ import {
 type StateType = components["schemas"]["StateType"];
 
 type ScatterPlotLegendProps = {
-	summary: RunsSummary;
+	/** States to show, with their run counts, in legend order. */
+	counts: readonly StateCount[];
 	/** The page's state filter, by state name; empty means every state. */
 	selectedStates?: ReadonlySet<FlowRunState>;
 	/** Omit to show the legend as a key without filtering. */
@@ -48,7 +49,7 @@ const ChipContent = ({ state, count }: { state: StateType; count: number }) => {
 };
 
 export const ScatterPlotLegend = ({
-	summary,
+	counts,
 	selectedStates = new Set(),
 	onSelectedStatesChange,
 }: ScatterPlotLegendProps) => {
@@ -57,7 +58,7 @@ export const ScatterPlotLegend = ({
 	if (!onSelectedStatesChange) {
 		return (
 			<ul className="flex flex-wrap gap-1.5" aria-label="Runs by state">
-				{summary.byState.map(({ state, count }) => (
+				{counts.map(({ state, count }) => (
 					<li key={state} className={cn(chipClassName, "border-transparent")}>
 						<ChipContent state={state} count={count} />
 					</li>
@@ -84,7 +85,7 @@ export const ScatterPlotLegend = ({
 
 	return (
 		<ul className="flex flex-wrap gap-1.5" aria-label="Filter runs by state">
-			{summary.byState.map(({ state, count }) => {
+			{counts.map(({ state, count }) => {
 				const pressed = state === isolated;
 				return (
 					<li key={state}>

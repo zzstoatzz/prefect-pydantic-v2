@@ -24,6 +24,7 @@ import {
 import { ScatterPlotLegend } from "./scatter-plot-legend";
 import { ScatterPlotReadout } from "./scatter-plot-readout";
 import {
+	countRunsByState,
 	createXAxisTickFormatter,
 	durationAxis,
 	findNearestPoint,
@@ -36,6 +37,7 @@ import {
 } from "./scatter-plot-utils";
 
 type StateType = components["schemas"]["StateType"];
+type HistoryResponse = components["schemas"]["HistoryResponse"];
 
 type FlowRunsScatterPlotProps = {
 	/** Undefined while the history is loading. */
@@ -49,6 +51,9 @@ type FlowRunsScatterPlotProps = {
 	/** The page's state filter, which the legend chips set. */
 	selectedStates?: ReadonlySet<FlowRunState>;
 	onSelectedStatesChange?: (states: Set<FlowRunState>) => void;
+	/** Run counts per state for the window without the state filter, so the
+	 * legend keeps a chip for every state while one is selected. */
+	stateHistory?: readonly HistoryResponse[];
 };
 
 const MARGIN = { top: 10, right: 12, bottom: 22, left: 46 };
@@ -73,6 +78,7 @@ export const FlowRunsScatterPlot = ({
 	onRangeChange,
 	selectedStates,
 	onSelectedStatesChange,
+	stateHistory,
 }: FlowRunsScatterPlotProps) => {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -120,6 +126,10 @@ export const FlowRunsScatterPlot = ({
 		[allRuns, timeWindow],
 	);
 	const summary = useMemo(() => summarizeRuns(runs), [runs]);
+	const legendCounts = useMemo(
+		() => (stateHistory ? countRunsByState(stateHistory) : summary.byState),
+		[stateHistory, summary],
+	);
 	const axis = useMemo(
 		() => durationAxis(runs.map((run) => run.duration)),
 		[runs],
@@ -372,7 +382,7 @@ export const FlowRunsScatterPlot = ({
 	return (
 		<div className="flex flex-col gap-3" data-testid="scatter-plot">
 			<ScatterPlotLegend
-				summary={summary}
+				counts={legendCounts}
 				selectedStates={selectedStates}
 				onSelectedStatesChange={onSelectedStatesChange}
 			/>

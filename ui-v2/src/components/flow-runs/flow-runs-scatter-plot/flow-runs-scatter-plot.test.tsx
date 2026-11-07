@@ -319,6 +319,46 @@ describe("FlowRunsScatterPlot", () => {
 		expect(chip).toHaveAttribute("aria-pressed", "false");
 	});
 
+	it("keeps a chip for every counted state while one is selected", async () => {
+		const user = userEvent.setup();
+		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();
+		const counted = (
+			state_type: "COMPLETED" | "CRASHED",
+			count_runs: number,
+		) => ({
+			state_type,
+			state_name: state_type.charAt(0) + state_type.slice(1).toLowerCase(),
+			count_runs,
+			sum_estimated_run_time: 0,
+			sum_estimated_lateness: 0,
+		});
+		renderPlot({
+			history: [crashed],
+			selectedStates: new Set(["Crashed"]),
+			onSelectedStatesChange,
+			stateHistory: [
+				{
+					interval_start: START.toISOString(),
+					interval_end: END.toISOString(),
+					states: [counted("COMPLETED", 40), counted("CRASHED", 1)],
+				},
+			],
+		});
+
+		expect(
+			await screen.findByRole("button", { name: /Crashed\s*1/ }),
+		).toHaveAttribute("aria-pressed", "true");
+		const completedChip = screen.getByRole("button", {
+			name: /Completed\s*40/,
+		});
+		expect(completedChip).toHaveAttribute("aria-pressed", "false");
+
+		await user.click(completedChip);
+		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
+			new Set(["Completed", "Cached"]),
+		);
+	});
+
 	it("hides a state on shift-click", async () => {
 		const user = userEvent.setup();
 		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();

@@ -7,6 +7,7 @@ import {
 } from "@/components/flow-runs/flow-runs-list/flow-runs-filters/state-filters.constants";
 
 type StateType = components["schemas"]["StateType"];
+type HistoryResponse = components["schemas"]["HistoryResponse"];
 
 /** The history endpoint returns at most this many runs, newest first. */
 export const HISTORY_LIMIT = 1000;
@@ -210,9 +211,11 @@ export const loadedSince = (
 	return Math.min(...runs.map((run) => Date.parse(run.timestamp)));
 };
 
+export type StateCount = { state: StateType; count: number };
+
 export type RunsSummary = {
 	total: number;
-	byState: { state: StateType; count: number }[];
+	byState: StateCount[];
 	median: number | undefined;
 	p90: number | undefined;
 };
@@ -221,6 +224,12 @@ const quantile = (sorted: readonly number[], q: number) =>
 	sorted.length === 0
 		? undefined
 		: sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+
+const inLegendOrder = (counts: ReadonlyMap<StateType, number>): StateCount[] =>
+	STATE_LEGEND_ORDER.flatMap((state) => {
+		const count = counts.get(state);
+		return count ? [{ state, count }] : [];
+	});
 
 export const summarizeRuns = (runs: readonly SimpleFlowRun[]): RunsSummary => {
 	const counts = new Map<StateType, number>();
@@ -233,13 +242,23 @@ export const summarizeRuns = (runs: readonly SimpleFlowRun[]): RunsSummary => {
 		.sort((a, b) => a - b);
 	return {
 		total: runs.length,
-		byState: STATE_LEGEND_ORDER.flatMap((state) => {
-			const count = counts.get(state);
-			return count ? [{ state, count }] : [];
-		}),
+		byState: inLegendOrder(counts),
 		median: quantile(durations, 0.5),
 		p90: quantile(durations, 0.9),
 	};
+};
+
+/** Runs per state type, summed over every interval and state name. */
+export const countRunsByState = (
+	history: readonly HistoryResponse[],
+): StateCount[] => {
+	const counts = new Map<StateType, number>();
+	for (const interval of history) {
+		for (const { state_type, count_runs } of interval.states) {
+			counts.set(state_type, (counts.get(state_type) ?? 0) + count_runs);
+		}
+	}
+	return inLegendOrder(counts);
 };
 
 export type PlotPoint = {
