@@ -92,7 +92,8 @@ type RunsPageProps = {
 	dateRange: DateRangeUrlState;
 	onDateRangeChange: (dateRange: DateRangeUrlState) => void;
 	// Scatter plot props
-	flowRunHistory: SimpleFlowRun[];
+	/** Undefined while the history is loading. */
+	flowRunHistory: SimpleFlowRun[] | undefined;
 	scatterPlotDateRange: { startDate?: Date; endDate?: Date };
 	// Task runs props
 	taskRuns: TaskRunResponse[];
@@ -337,6 +338,7 @@ export const RunsPage = ({
 									history={flowRunHistory}
 									startDate={scatterPlotDateRange.startDate}
 									endDate={scatterPlotDateRange.endDate}
+									totalCount={flowRunsCount}
 								/>
 							</CardContent>
 						</Card>
