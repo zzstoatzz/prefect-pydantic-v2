@@ -98,9 +98,14 @@ export const FlowRunsScatterPlot = ({
 	} | null>(null);
 
 	const allRuns = useMemo(() => history ?? [], [history]);
+	// A count below the runs already loaded is one that hasn't arrived yet.
+	const knownTotal =
+		totalCount !== undefined && totalCount >= allRuns.length
+			? totalCount
+			: undefined;
 	const since = useMemo(
-		() => loadedSince(allRuns, totalCount),
-		[allRuns, totalCount],
+		() => loadedSince(allRuns, knownTotal),
+		[allRuns, knownTotal],
 	);
 	const timeWindow = useMemo(() => {
 		const requested = resolveTimeWindow({
@@ -417,7 +422,7 @@ export const FlowRunsScatterPlot = ({
 				<ScatterPlotReadout
 					run={active?.run}
 					summary={summary}
-					totalCount={totalCount}
+					totalCount={knownTotal}
 					loadedSince={since}
 					upcoming={timeWindow.upcoming}
 					canZoom={onRangeChange !== undefined}

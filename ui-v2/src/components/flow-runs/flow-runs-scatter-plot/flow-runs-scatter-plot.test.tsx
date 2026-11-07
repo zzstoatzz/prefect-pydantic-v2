@@ -153,6 +153,20 @@ describe("FlowRunsScatterPlot", () => {
 		);
 	});
 
+	it("does not call a full page complete while the run count is still 0", async () => {
+		const fullPage = Array.from({ length: 1000 }, (_, index) =>
+			createFakeSimpleFlowRun({
+				timestamp: new Date(END.getTime() - index * 30_000).toISOString(),
+				duration: 1,
+			}),
+		);
+		renderPlot({ history: fullPage, totalCount: 0 });
+
+		expect(await screen.findByTestId("scatter-plot-readout")).toHaveTextContent(
+			"Latest 1,000 of more than 1,000 runs, since",
+		);
+	});
+
 	it("falls back to a short id when the run's details fail to load", async () => {
 		server.use(
 			http.get(buildApiUrl("/flow_runs/:id"), () =>
