@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ChangeEvent, useState } from "react";
 import type { FlowRun, SimpleFlowRun } from "@/api/flow-runs";
 import { buildListFlowsQuery } from "@/api/flows";
-import type { TaskRunResponse } from "@/api/task-runs";
+import type { HistoryResponse, TaskRunResponse } from "@/api/task-runs";
 import type { FlowRunCardData } from "@/components/flow-runs/flow-run-card";
 import {
 	DateRangeFilter,
@@ -94,6 +94,7 @@ type RunsPageProps = {
 	// Scatter plot props
 	/** Undefined while the history is loading. */
 	flowRunHistory: SimpleFlowRun[] | undefined;
+	flowRunStateHistory?: HistoryResponse[];
 	scatterPlotDateRange: { startDate?: Date; endDate?: Date };
 	// Task runs props
 	taskRuns: TaskRunResponse[];
@@ -153,6 +154,7 @@ export const RunsPage = ({
 	onDateRangeChange,
 	// Scatter plot props
 	flowRunHistory,
+	flowRunStateHistory,
 	scatterPlotDateRange,
 	// Task runs props
 	taskRuns,
@@ -336,9 +338,19 @@ export const RunsPage = ({
 							<CardContent>
 								<FlowRunsScatterPlot
 									history={flowRunHistory}
+									stateHistory={flowRunStateHistory}
 									startDate={scatterPlotDateRange.startDate}
 									endDate={scatterPlotDateRange.endDate}
 									totalCount={flowRunsCount}
+									onRangeChange={({ startDate, endDate }) =>
+										onDateRangeChange({
+											range: undefined,
+											start: startDate.toISOString(),
+											end: endDate.toISOString(),
+										})
+									}
+									selectedStates={selectedStates}
+									onSelectedStatesChange={onStateFilterChange}
 								/>
 							</CardContent>
 						</Card>

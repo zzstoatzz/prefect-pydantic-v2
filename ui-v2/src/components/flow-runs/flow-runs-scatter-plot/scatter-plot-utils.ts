@@ -1,9 +1,15 @@
 import type { SimpleFlowRun } from "@/api/flow-runs";
 import { RUN_STATES } from "@/api/flow-runs/constants";
 import type { components } from "@/api/prefect";
+import {
+	FLOW_RUN_STATES,
+	FLOW_RUN_STATES_MAP,
+	type FlowRunState,
+} from "@/components/flow-runs/flow-runs-list/flow-runs-filters/state-filters.constants";
 import { secondsToApproximateString } from "@/utils/seconds";
 
 type StateType = components["schemas"]["StateType"];
+type HistoryResponse = components["schemas"]["HistoryResponse"];
 
 /** Every state type, in the order upstream's state type filter lists them. */
 export const STATE_TYPES = Object.keys(RUN_STATES) as StateType[];
@@ -214,6 +220,44 @@ export const summarizeRuns = (runs: readonly SimpleFlowRun[]): RunsSummary => {
 		p90: quantile(durations, 0.9),
 	};
 };
+
+/** Runs per state type, summed over every interval and state name. */
+export const countRunsByState = (
+	history: readonly HistoryResponse[],
+): StateCount[] => {
+	const counts = new Map<StateType, number>();
+	for (const interval of history) {
+		for (const { state_type, count_runs } of interval.states) {
+			counts.set(state_type, (counts.get(state_type) ?? 0) + count_runs);
+		}
+	}
+	return inLegendOrder(counts);
+};
+
+/** The one state type a state-name filter selects, if it selects only one. */
+export const isolatedStateType = (
+	selected: ReadonlySet<FlowRunState>,
+): StateType | undefined => {
+	const types = new Set(
+		Array.from(selected, (name) => FLOW_RUN_STATES_MAP[name]),
+	);
+	const [only] = types;
+	return types.size === 1 ? only : undefined;
+};
+
+export const stateNamesOfType = (type: StateType): Set<FlowRunState> =>
+	new Set(FLOW_RUN_STATES.filter((name) => FLOW_RUN_STATES_MAP[name] === type));
+
+/** Removes a state type from a state-name filter, where empty means every state. */
+export const withoutStateType = (
+	selected: ReadonlySet<FlowRunState>,
+	type: StateType,
+): Set<FlowRunState> =>
+	new Set(
+		Array.from(selected.size > 0 ? selected : FLOW_RUN_STATES).filter(
+			(name) => FLOW_RUN_STATES_MAP[name] !== type,
+		),
+	);
 
 export type PlotPoint = {
 	run: SimpleFlowRun;

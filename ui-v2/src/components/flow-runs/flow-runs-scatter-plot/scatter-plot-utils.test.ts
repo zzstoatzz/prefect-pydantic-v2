@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { createFakeSimpleFlowRun } from "@/mocks";
 import {
+	countRunsByState,
 	createXAxisTickFormatter,
 	durationAxis,
 	findNearestPoint,
 	formatDuration,
 	HISTORY_LIMIT,
+	isolatedStateType,
 	loadedSince,
 	resolveTimeWindow,
+	stateNamesOfType,
 	summarizeRuns,
 	thinTicks,
+	withoutStateType,
 } from "./scatter-plot-utils";
 
 const HOUR = 60 * 60 * 1000;
@@ -245,5 +249,66 @@ describe("createXAxisTickFormatter", () => {
 	it("formats year when crossing year boundary", () => {
 		const date = new Date("2024-01-01T00:00:00.000Z");
 		expect(formatter(date.getTime())).toMatch(/2024|January|Jan|Mon|1/i);
+	});
+});
+
+describe("state-name filter helpers", () => {
+	it("finds the one state type a filter selects", () => {
+		expect(isolatedStateType(new Set(["Failed", "TimedOut"]))).toBe("FAILED");
+		expect(isolatedStateType(new Set(["Failed", "Crashed"]))).toBeUndefined();
+		expect(isolatedStateType(new Set())).toBeUndefined();
+	});
+
+	it("selects every state name of a type", () => {
+		expect(stateNamesOfType("COMPLETED")).toEqual(
+			new Set(["Completed", "Cached"]),
+		);
+	});
+
+	it("hides a type from a filter, treating an empty filter as every state", () => {
+		const remaining = withoutStateType(new Set(), "COMPLETED");
+		expect(remaining.has("Completed")).toBe(false);
+		expect(remaining.has("Cached")).toBe(false);
+		expect(remaining.has("Failed")).toBe(true);
+		expect(withoutStateType(new Set(["Failed", "Crashed"]), "FAILED")).toEqual(
+			new Set(["Crashed"]),
+		);
+	});
+});
+
+describe("countRunsByState", () => {
+	it("sums runs per state type across intervals and state names", () => {
+		const state = (
+			state_type: "COMPLETED" | "FAILED",
+			state_name: string,
+			count_runs: number,
+		) => ({
+			state_type,
+			state_name,
+			count_runs,
+			sum_estimated_run_time: 0,
+			sum_estimated_lateness: 0,
+		});
+		const interval = (states: ReturnType<typeof state>[]) => ({
+			interval_start: "2026-11-06T00:00:00Z",
+			interval_end: "2026-11-07T00:00:00Z",
+			states,
+		});
+
+		expect(
+			countRunsByState([
+				interval([
+					state("COMPLETED", "Completed", 5),
+					state("FAILED", "Failed", 1),
+				]),
+				interval([
+					state("COMPLETED", "Cached", 2),
+					state("FAILED", "TimedOut", 0),
+				]),
+			]),
+		).toEqual([
+			{ state: "COMPLETED", count: 7 },
+			{ state: "FAILED", count: 1 },
+		]);
 	});
 });
