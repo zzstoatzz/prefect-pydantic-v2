@@ -1,474 +1,248 @@
-import { useNavigate, useRouter } from "@tanstack/react-router";
-import { scaleLog, scaleTime } from "d3";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import humanizeDuration from "humanize-duration";
+import { Calendar, ChevronRight, Clock } from "lucide-react";
+import { useMemo } from "react";
 import {
-	type KeyboardEvent,
-	type PointerEvent,
-	type RefObject,
-	useCallback,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
-import type { SimpleFlowRun } from "@/api/flow-runs";
+	CartesianGrid,
+	ResponsiveContainer,
+	Scatter,
+	ScatterChart,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from "recharts";
+import {
+	buildGetFlowRunDetailsQuery,
+	type SimpleFlowRun,
+} from "@/api/flow-runs";
+import { buildFLowDetailsQuery } from "@/api/flows";
 import type { components } from "@/api/prefect";
-import type { FlowRunState } from "@/components/flow-runs/flow-runs-list";
-import { Skeleton } from "@/components/ui/skeleton";
-import { getAllStateColors } from "@/utils/state-colors";
+import { StateBadge } from "@/components/ui/state-badge";
+import { getStateColor, STATE_COLORS } from "@/utils/state-colors";
 import {
-	drawScatter,
-	type ScatterGeometry,
-	type ScatterPalette,
-} from "./draw-scatter";
-import { ScatterPlotLegend } from "./scatter-plot-legend";
-import { ScatterPlotReadout } from "./scatter-plot-readout";
-import {
-	countRunsByState,
 	createXAxisTickFormatter,
-	durationAxis,
-	findNearestPoint,
-	loadedSince,
-	type PlotPoint,
-	resolveTimeWindow,
-	STATE_DRAW_ORDER,
-	summarizeRuns,
-	thinTicks,
+	formatYAxisTick,
+	generateNiceTimeTicks,
 } from "./scatter-plot-utils";
 
-type StateType = components["schemas"]["StateType"];
-type HistoryResponse = components["schemas"]["HistoryResponse"];
-
 type FlowRunsScatterPlotProps = {
-	/** Undefined while the history is loading. */
-	history: SimpleFlowRun[] | undefined;
+	history: SimpleFlowRun[];
 	startDate?: Date;
 	endDate?: Date;
-	/** Runs matching the page's filters, to tell when the history was cut short. */
-	totalCount?: number;
-	/** Called with the span a person drags across; omit to disable zooming. */
-	onRangeChange?: (range: { startDate: Date; endDate: Date }) => void;
-	/** The page's state filter, which the legend chips set. */
-	selectedStates?: ReadonlySet<FlowRunState>;
-	onSelectedStatesChange?: (states: Set<FlowRunState>) => void;
-	/** Run counts per state for the window without the state filter, so the
-	 * legend keeps a chip for every state while one is selected. */
-	stateHistory?: readonly HistoryResponse[];
 };
 
-const MARGIN = { top: 10, right: 12, bottom: 22, left: 46 };
-const LANE_HEIGHT = 12;
-const LANE_GAP = 12;
-/** Keeps points at the window's edges fully inside the plot. */
-const EDGE_PADDING = 6;
-/** Hatched strip marking that older runs exist but were not loaded. */
-const UNLOADED_STRIP = 12;
-const BRUSH_THRESHOLD = 8;
-const hitRadius = (pointerType: string) => (pointerType === "mouse" ? 12 : 24);
+type ChartDataPoint = {
+	x: number;
+	y: number;
+	stateType: components["schemas"]["StateType"];
+	id: string;
+	duration: number;
+	lateness: number;
+	timestamp: string;
+};
 
-const drawRank = new Map<StateType, number>(
-	STATE_DRAW_ORDER.map((state, index) => [state, index]),
-);
+type CustomDotProps = {
+	cx?: number;
+	cy?: number;
+	payload?: ChartDataPoint;
+};
+
+const CustomDot = ({ cx, cy, payload }: CustomDotProps) => {
+	if (cx === undefined || cy === undefined || !payload) {
+		return null;
+	}
+
+	const fillColor =
+		getStateColor(payload.stateType, 500) ||
+		STATE_COLORS[payload.stateType] ||
+		"var(--muted-foreground)";
+	const strokeColor =
+		getStateColor(payload.stateType, 600) ||
+		STATE_COLORS[payload.stateType] ||
+		"var(--muted-foreground)";
+
+	return (
+		<circle
+			cx={cx}
+			cy={cy}
+			r={8}
+			fill={fillColor}
+			stroke={strokeColor}
+			strokeWidth={1}
+			opacity={0.5}
+			className="hover:opacity-100 transition-opacity cursor-pointer"
+		/>
+	);
+};
+
+type FlowRunTooltipPayload = {
+	payload?: ChartDataPoint;
+};
+
+type FlowRunTooltipProps = {
+	active?: boolean;
+	payload?: FlowRunTooltipPayload[];
+};
+
+const FlowRunTooltip = ({ active, payload }: FlowRunTooltipProps) => {
+	const firstPayload = payload?.[0];
+	const data = firstPayload?.payload;
+	const flowRunId = data?.id;
+
+	// Fetch flow run details when tooltip is active
+	const { data: flowRun } = useQuery({
+		...buildGetFlowRunDetailsQuery(flowRunId ?? ""),
+		enabled: active && Boolean(flowRunId),
+		staleTime: 5 * 60 * 1000, // 5 minutes to avoid refetching on mouse movement
+	});
+
+	// Fetch flow details when we have flow_id
+	const { data: flow } = useQuery({
+		...buildFLowDetailsQuery(flowRun?.flow_id ?? ""),
+		enabled: Boolean(flowRun?.flow_id),
+		staleTime: 5 * 60 * 1000,
+	});
+
+	if (!active || !payload || payload.length === 0 || !data) {
+		return null;
+	}
+
+	const startTime = new Date(data.timestamp);
+
+	return (
+		<div className="bg-background border rounded-lg p-3 shadow-lg flex flex-col gap-2 min-w-48">
+			{/* Flow name and flow run name breadcrumbs */}
+			<div className="flex items-center gap-1 text-sm text-muted-foreground">
+				{flowRun?.flow_id && (
+					<>
+						<Link
+							to="/flows/flow/$id"
+							params={{ id: flowRun.flow_id }}
+							className="font-semibold hover:underline truncate max-w-32"
+						>
+							{flow?.name ?? "..."}
+						</Link>
+						<ChevronRight className="size-3 flex-shrink-0" />
+					</>
+				)}
+				<Link
+					to="/runs/flow-run/$id"
+					params={{ id: data.id }}
+					className="hover:underline truncate max-w-32"
+				>
+					{flowRun?.name ?? data.id.slice(0, 8)}
+				</Link>
+			</div>
+			<div>
+				<StateBadge type={data.stateType} />
+			</div>
+			<hr className="border-border" />
+			<div className="flex flex-col gap-1">
+				<span className="flex items-center gap-2 text-sm text-muted-foreground">
+					<Clock className="size-4" />
+					{humanizeDuration(Math.ceil(data.duration * 1000), {
+						largest: 2,
+						round: true,
+					})}
+				</span>
+				<span className="flex items-center gap-2 text-sm text-muted-foreground">
+					<Calendar className="size-4" />
+					{startTime.toLocaleString()}
+				</span>
+			</div>
+		</div>
+	);
+};
 
 export const FlowRunsScatterPlot = ({
 	history,
 	startDate,
 	endDate,
-	totalCount,
-	onRangeChange,
-	selectedStates,
-	onSelectedStatesChange,
-	stateHistory,
 }: FlowRunsScatterPlotProps) => {
-	const containerRef = useRef<HTMLDivElement>(null);
-	const canvasRef = useRef<HTMLCanvasElement>(null);
-	const size = useElementSize(containerRef);
-	const palette = useScatterPalette();
-	const navigate = useNavigate();
-	const router = useRouter();
+	const chartData = useMemo<ChartDataPoint[]>(() => {
+		return history.map((item) => ({
+			x: new Date(item.timestamp).getTime(),
+			y: item.duration,
+			stateType: item.state_type,
+			id: item.id,
+			duration: item.duration,
+			lateness: item.lateness,
+			timestamp: item.timestamp,
+		}));
+	}, [history]);
 
-	const [hoverId, setHoverId] = useState<string>();
-	const [pinnedId, setPinnedId] = useState<string>();
-	const [brush, setBrush] = useState<{ from: number; to: number }>();
-	const gesture = useRef<{
-		pointerId: number;
-		x: number;
-		y: number;
-		brushing: boolean;
-	} | null>(null);
-
-	const allRuns = useMemo(() => history ?? [], [history]);
-	const since = useMemo(
-		() => loadedSince(allRuns, totalCount),
-		[allRuns, totalCount],
-	);
-	const timeWindow = useMemo(() => {
-		const requested = resolveTimeWindow({
-			runs: allRuns,
-			startDate,
-			endDate,
-			now: Date.now(),
-		});
-		// Spend the width on the runs that loaded, not on a span known to be
-		// incomplete; the readout says how much was left out.
-		if (since === undefined || since <= requested.start) return requested;
-		return {
-			...requested,
-			start: since - (requested.end - since) * 0.02,
-		};
-	}, [allRuns, startDate, endDate, since]);
-	const runs = useMemo(
-		() =>
-			allRuns.filter((run) => {
-				const time = Date.parse(run.timestamp);
-				return time >= timeWindow.start && time <= timeWindow.end;
-			}),
-		[allRuns, timeWindow],
-	);
-	const summary = useMemo(() => summarizeRuns(runs), [runs]);
-	const legendCounts = useMemo(
-		() => (stateHistory ? countRunsByState(stateHistory) : summary.byState),
-		[stateHistory, summary],
-	);
-	const axis = useMemo(
-		() => durationAxis(runs.map((run) => run.duration)),
-		[runs],
-	);
-
-	const layout = useMemo(() => {
-		if (size.width === 0 || size.height === 0) return undefined;
-		const axisY = size.height - MARGIN.bottom;
-		const geometry: ScatterGeometry = {
-			width: size.width,
-			height: size.height,
-			left: MARGIN.left,
-			right: size.width - MARGIN.right,
-			top: MARGIN.top,
-			logBottom: axisY - LANE_HEIGHT - LANE_GAP,
-			laneY: axisY - LANE_HEIGHT / 2,
-			axisY,
-		};
-		const unloadedUntilX =
-			since === undefined ? undefined : geometry.left + UNLOADED_STRIP;
-		const x = scaleTime()
-			.domain([timeWindow.start, timeWindow.end])
-			.range([
-				(unloadedUntilX ?? geometry.left) + EDGE_PADDING,
-				geometry.right - EDGE_PADDING,
-			])
-			.clamp(true);
-		const y = scaleLog()
-			.domain(axis.domain)
-			.range([geometry.logBottom, geometry.top]);
-
-		const points: PlotPoint[] = [...runs]
-			.sort(
-				(a, b) =>
-					(drawRank.get(a.state_type) ?? 0) - (drawRank.get(b.state_type) ?? 0),
-			)
-			.map((run) => ({
-				run,
-				x: x(new Date(run.timestamp)),
-				y: run.duration > 0 ? y(run.duration) : geometry.laneY,
-			}));
-
-		const plotWidth = geometry.right - geometry.left;
-		const plotArea = plotWidth * (geometry.axisY - geometry.top);
-		const radius = Math.min(
-			5,
-			Math.max(2.5, Math.sqrt(plotArea / Math.max(points.length, 1)) * 0.22),
-		);
-
-		const formatTime = createXAxisTickFormatter();
-		const timeTicks = x
-			.ticks(Math.max(2, Math.floor(plotWidth / 110)))
-			.map((date) => ({ x: x(date), label: formatTime(date.getTime()) }));
-		const durationTicks = thinTicks(
-			axis.ticks,
-			geometry.logBottom - geometry.top,
-			22,
-		).map((tick) => ({ y: y(tick.seconds), label: tick.label }));
-
-		const now = Date.now();
-		const span = timeWindow.end - timeWindow.start;
-		const nowX =
-			now > timeWindow.start && timeWindow.end - now > span / 100
-				? x(new Date(now))
-				: undefined;
-
-		return {
-			geometry,
-			x,
-			points,
-			radius,
-			timeTicks,
-			durationTicks,
-			nowX,
-			unloadedUntilX,
-		};
-	}, [size, timeWindow, axis, runs, since]);
-
-	const timeOrder = useMemo(
-		() => [...(layout?.points ?? [])].sort((a, b) => a.x - b.x),
-		[layout],
-	);
-
-	const activeId = hoverId ?? pinnedId;
-	const activeRun = useMemo(
-		() =>
-			activeId === undefined
-				? undefined
-				: timeOrder.find((point) => point.run.id === activeId)?.run,
-		[activeId, timeOrder],
-	);
-
-	useEffect(() => {
-		const canvas = canvasRef.current;
-		if (!canvas || !layout) return;
-		const ctx = canvas.getContext("2d");
-		if (!ctx) return;
-		const ratio = globalThis.devicePixelRatio || 1;
-		const width = Math.round(layout.geometry.width * ratio);
-		const height = Math.round(layout.geometry.height * ratio);
-		if (canvas.width !== width) canvas.width = width;
-		if (canvas.height !== height) canvas.height = height;
-		ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-		drawScatter(ctx, {
-			...layout,
-			activeId: activeRun?.id,
-			brush,
-			palette,
-			fontFamily: getComputedStyle(canvas).fontFamily,
-		});
-	}, [layout, activeRun, brush, palette]);
-
-	const openRun = useCallback(
-		(id: string, newTab: boolean) => {
-			if (newTab) {
-				const { href } = router.buildLocation({
-					to: "/runs/flow-run/$id",
-					params: { id },
-				});
-				globalThis.open(href, "_blank", "noopener");
-				return;
-			}
-			void navigate({ to: "/runs/flow-run/$id", params: { id } });
-		},
-		[navigate, router],
-	);
-
-	const localPoint = (event: PointerEvent<HTMLCanvasElement>) => {
-		const bounds = event.currentTarget.getBoundingClientRect();
-		return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
-	};
-
-	const onPointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
-		if (event.pointerType === "mouse" && event.button !== 0) return;
-		gesture.current = {
-			pointerId: event.pointerId,
-			...localPoint(event),
-			brushing: false,
-		};
-	};
-
-	const onPointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
-		if (!layout) return;
-		const point = localPoint(event);
-		const current = gesture.current;
-		if (current?.pointerId === event.pointerId) {
-			const dx = point.x - current.x;
-			const dy = point.y - current.y;
-			if (
-				!current.brushing &&
-				onRangeChange &&
-				Math.abs(dx) > BRUSH_THRESHOLD &&
-				Math.abs(dx) > Math.abs(dy)
-			) {
-				current.brushing = true;
-				event.currentTarget.setPointerCapture(event.pointerId);
-				setHoverId(undefined);
-			}
-			if (current.brushing) {
-				setBrush({ from: current.x, to: point.x });
-				return;
-			}
+	// Compute actual numeric domain for x-axis
+	const xDomain = useMemo(() => {
+		if (startDate && endDate) {
+			return [startDate.getTime(), endDate.getTime()] as [number, number];
 		}
-		if (event.pointerType === "mouse") {
-			setHoverId(
-				findNearestPoint(layout.points, point.x, point.y, hitRadius("mouse"))
-					?.run.id,
-			);
+		if (chartData.length === 0) {
+			const now = Date.now();
+			const dayAgo = now - 24 * 60 * 60 * 1000;
+			return [dayAgo, now] as [number, number];
 		}
-	};
+		// Compute from data
+		const timestamps = chartData.map((d) => d.x);
+		const min = Math.min(...timestamps);
+		const max = Math.max(...timestamps);
+		return [min, max] as [number, number];
+	}, [startDate, endDate, chartData]);
 
-	const onPointerUp = (event: PointerEvent<HTMLCanvasElement>) => {
-		const current = gesture.current;
-		gesture.current = null;
-		if (!layout || current?.pointerId !== event.pointerId) return;
-		const point = localPoint(event);
-		if (current.brushing) {
-			setBrush(undefined);
-			const from = Math.min(current.x, point.x);
-			const to = Math.max(current.x, point.x);
-			if (to - from >= BRUSH_THRESHOLD) {
-				onRangeChange?.({
-					startDate: layout.x.invert(from),
-					endDate: layout.x.invert(to),
-				});
-			}
-			return;
-		}
-		const hit = findNearestPoint(
-			layout.points,
-			point.x,
-			point.y,
-			hitRadius(event.pointerType),
-		);
-		if (event.pointerType === "mouse") {
-			if (hit) openRun(hit.run.id, event.metaKey || event.ctrlKey);
-			else setPinnedId(undefined);
-			return;
-		}
-		setPinnedId(hit?.run.id);
-	};
+	// Create memoized X-axis formatter
+	const formatXAxisTick = useMemo(() => createXAxisTickFormatter(), []);
 
-	const onPointerCancel = () => {
-		gesture.current = null;
-		setBrush(undefined);
-	};
+	// Generate explicit tick values for X-axis aligned with nice time boundaries
+	const xAxisTicks = useMemo(() => {
+		return generateNiceTimeTicks(xDomain[0], xDomain[1], 10);
+	}, [xDomain]);
 
-	const onPointerLeave = (event: PointerEvent<HTMLCanvasElement>) => {
-		if (event.pointerType === "mouse") setHoverId(undefined);
-	};
-
-	const onKeyDown = (event: KeyboardEvent<HTMLCanvasElement>) => {
-		if (timeOrder.length === 0) return;
-		const last = timeOrder.length - 1;
-		const index = timeOrder.findIndex((point) => point.run.id === pinnedId);
-		let next: number;
-		switch (event.key) {
-			case "ArrowLeft":
-				next = index === -1 ? last : Math.max(0, index - 1);
-				break;
-			case "ArrowRight":
-				next = index === -1 ? last : Math.min(last, index + 1);
-				break;
-			case "Home":
-				next = 0;
-				break;
-			case "End":
-				next = last;
-				break;
-			case "Enter":
-				if (pinnedId === undefined) return;
-				event.preventDefault();
-				openRun(pinnedId, event.metaKey || event.ctrlKey);
-				return;
-			case "Escape":
-				if (pinnedId === undefined) return;
-				event.preventDefault();
-				setPinnedId(undefined);
-				return;
-			default:
-				return;
-		}
-		event.preventDefault();
-		setHoverId(undefined);
-		setPinnedId(timeOrder[next]?.run.id);
-	};
-
-	const hasPoints = timeOrder.length > 0;
+	if (history.length === 0) {
+		return null;
+	}
 
 	return (
-		<div className="flex flex-col gap-3" data-testid="scatter-plot">
-			<ScatterPlotLegend
-				counts={legendCounts}
-				selectedStates={selectedStates}
-				onSelectedStatesChange={onSelectedStatesChange}
-			/>
-			<div ref={containerRef} className="relative h-52 w-full md:h-72">
-				<canvas
-					ref={canvasRef}
-					tabIndex={hasPoints ? 0 : -1}
-					role="img"
-					aria-label={`Flow run durations by start time, ${summary.total.toLocaleString()} runs. Use the arrow keys to step through runs and Enter to open one.`}
-					className="absolute inset-0 size-full touch-pan-y rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-					style={{ cursor: hoverId ? "pointer" : "crosshair" }}
-					onPointerDown={onPointerDown}
-					onPointerMove={onPointerMove}
-					onPointerUp={onPointerUp}
-					onPointerCancel={onPointerCancel}
-					onPointerLeave={onPointerLeave}
-					onKeyDown={onKeyDown}
-				/>
-				{history === undefined ? (
-					<Skeleton className="absolute inset-0" />
-				) : runs.length === 0 ? (
-					<p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
-						No flow runs in this window
-					</p>
-				) : null}
-			</div>
-			{history === undefined ? (
-				<Skeleton className="h-16 w-full" />
-			) : (
-				<ScatterPlotReadout
-					run={activeRun}
-					summary={summary}
-					totalCount={totalCount}
-					loadedSince={since}
-					upcoming={timeWindow.upcoming}
-					canZoom={onRangeChange !== undefined}
-				/>
-			)}
+		<div className="hidden md:block w-full h-72" data-testid="scatter-plot">
+			<ResponsiveContainer width="100%" height="100%">
+				<ScatterChart>
+					<CartesianGrid
+						horizontal={true}
+						vertical={false}
+						stroke="var(--border)"
+						strokeDasharray=""
+					/>
+					<XAxis
+						type="number"
+						dataKey="x"
+						scale="time"
+						domain={xDomain}
+						ticks={xAxisTicks}
+						tickFormatter={formatXAxisTick}
+						tick={{ fontSize: 12 }}
+						tickLine={false}
+						axisLine={{ stroke: "var(--border)" }}
+					/>
+					<YAxis
+						type="number"
+						dataKey="y"
+						tickFormatter={formatYAxisTick}
+						tick={{ fontSize: 12 }}
+						tickLine={false}
+						axisLine={{ stroke: "var(--border)" }}
+						width={60}
+					/>
+					<Tooltip
+						content={<FlowRunTooltip />}
+						cursor={{ strokeDasharray: "3 3" }}
+						animationDuration={0}
+					/>
+					<Scatter
+						data={chartData}
+						shape={<CustomDot />}
+						isAnimationActive={false}
+					/>
+				</ScatterChart>
+			</ResponsiveContainer>
 		</div>
 	);
-};
-
-const useElementSize = (ref: RefObject<HTMLElement | null>) => {
-	const [size, setSize] = useState({ width: 0, height: 0 });
-	useLayoutEffect(() => {
-		const element = ref.current;
-		if (!element) return;
-		const measure = (width: number, height: number) =>
-			setSize((current) =>
-				current.width === width && current.height === height
-					? current
-					: { width, height },
-			);
-		const bounds = element.getBoundingClientRect();
-		measure(bounds.width, bounds.height);
-		const observer = new ResizeObserver(([entry]) => {
-			if (entry) measure(entry.contentRect.width, entry.contentRect.height);
-		});
-		observer.observe(element);
-		return () => observer.disconnect();
-	}, [ref]);
-	return size;
-};
-
-const readPalette = (): ScatterPalette => {
-	const style = getComputedStyle(document.documentElement);
-	const token = (name: string, fallback: string) =>
-		style.getPropertyValue(name).trim() || fallback;
-	return {
-		border: token("--border", "#d4d4d8"),
-		muted: token("--muted-foreground", "#71717a"),
-		foreground: token("--foreground", "#18181b"),
-		state: getAllStateColors(500),
-	};
-};
-
-/** Theme and color-blind modes swap classes on <html>; re-read colors then. */
-const useScatterPalette = () => {
-	const [palette, setPalette] = useState(readPalette);
-	useEffect(() => {
-		const observer = new MutationObserver(() => setPalette(readPalette()));
-		observer.observe(document.documentElement, {
-			attributes: true,
-			attributeFilter: ["class", "style", "data-theme"],
-		});
-		return () => observer.disconnect();
-	}, []);
-	return palette;
 };

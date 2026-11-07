@@ -1,431 +1,204 @@
-import { QueryClient } from "@tanstack/react-query";
-import {
-	createMemoryHistory,
-	createRootRoute,
-	createRoute,
-	createRouter,
-	Outlet,
-	RouterProvider,
-} from "@tanstack/react-router";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { buildApiUrl, createWrapper, server } from "@tests/utils";
-import { HttpResponse, http } from "msw";
-import { type ComponentProps, type ReactNode, useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SimpleFlowRun } from "@/api/flow-runs";
-import type { FlowRunState } from "@/components/flow-runs/flow-runs-list";
-import {
-	createFakeFlow,
-	createFakeFlowRun,
-	createFakeSimpleFlowRun,
-} from "@/mocks";
+import { render, screen } from "@testing-library/react";
+import { createWrapper } from "@tests/utils";
+import { describe, expect, it } from "vitest";
+import { createFakeSimpleFlowRuns } from "@/mocks";
 import { FlowRunsScatterPlot } from "./flow-runs-scatter-plot";
-
-// tests/setup.ts sizes every element 500x300, which places the plot's x range
-// at [52, 482] and the zero-duration lane at y = 272.
-const START = new Date("2026-11-06T00:00:00Z");
-const END = new Date("2026-11-06T10:00:00Z");
-const MIDDLE_X = (52 + 482) / 2;
-const LANE_Y = 272;
-
-const crashed = createFakeSimpleFlowRun({
-	id: "crashed-run",
-	state_type: "CRASHED",
-	timestamp: "2026-11-06T05:00:00Z",
-	duration: 0,
-	lateness: 0,
-});
-const completed = createFakeSimpleFlowRun({
-	id: "completed-run",
-	state_type: "COMPLETED",
-	timestamp: "2026-11-06T02:00:00Z",
-	duration: 119,
-	lateness: 0,
-});
-
-type PlotProps = ComponentProps<typeof FlowRunsScatterPlot>;
-
-const PlotWithStateFilter = ({
-	selectedStates: initialStates,
-	onSelectedStatesChange,
-	...props
-}: PlotProps) => {
-	const [selectedStates, setSelectedStates] = useState(
-		() => new Set(initialStates),
-	);
-	return (
-		<FlowRunsScatterPlot
-			{...props}
-			selectedStates={selectedStates}
-			onSelectedStatesChange={(states) => {
-				onSelectedStatesChange?.(states);
-				setSelectedStates(states);
-			}}
-		/>
-	);
-};
-
-const renderPlot = (
-	props: Partial<PlotProps> = {},
-	Plot: (props: PlotProps) => ReactNode = PlotWithStateFilter,
-) => {
-	const rootRoute = createRootRoute({ component: Outlet });
-	const plotRoute = createRoute({
-		getParentRoute: () => rootRoute,
-		path: "/",
-		component: () => (
-			<Plot
-				history={[completed, crashed]}
-				startDate={START}
-				endDate={END}
-				{...props}
-			/>
-		),
-	});
-	const runRoute = createRoute({
-		getParentRoute: () => rootRoute,
-		path: "/runs/flow-run/$id",
-		component: () => <p>run page</p>,
-	});
-	const router = createRouter({
-		routeTree: rootRoute.addChildren([plotRoute, runRoute]),
-		history: createMemoryHistory({ initialEntries: ["/"] }),
-		context: { queryClient: new QueryClient() },
-	});
-	render(<RouterProvider router={router} />, { wrapper: createWrapper() });
-	return router;
-};
-
-const pointer = (
-	type: "pointerDown" | "pointerMove" | "pointerUp",
-	target: Element,
-	init: { x: number; y: number; pointerType: "mouse" | "touch" },
-) =>
-	fireEvent[type](target, {
-		pointerId: 1,
-		pointerType: init.pointerType,
-		button: 0,
-		clientX: init.x,
-		clientY: init.y,
-	});
+import {
+	createXAxisTickFormatter,
+	formatYAxisTick,
+	generateNiceTimeTicks,
+} from "./scatter-plot-utils";
 
 describe("FlowRunsScatterPlot", () => {
-	beforeEach(() => {
-		vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
-		HTMLElement.prototype.setPointerCapture = vi.fn();
-		server.use(
-			http.get(buildApiUrl("/flow_runs/:id"), ({ params }) =>
-				HttpResponse.json(
-					createFakeFlowRun({
-						id: String(params.id),
-						name: "brave-otter",
-						flow_id: "flow-1",
-					}),
-				),
-			),
-			http.get(buildApiUrl("/flows/:id"), () =>
-				HttpResponse.json(
-					createFakeFlow({ id: "flow-1", name: "nightly-etl" }),
-				),
-			),
-		);
-	});
+	it("renders the scatter plot when history data is provided", () => {
+		const history = createFakeSimpleFlowRuns(10);
 
-	it("summarizes the window and counts each state", async () => {
-		renderPlot();
-
-		expect(
-			await screen.findByRole("button", { name: /Completed\s*1/ }),
-		).toBeVisible();
-		expect(screen.getByRole("button", { name: /Crashed\s*1/ })).toBeVisible();
-		expect(screen.getByTestId("scatter-plot-readout")).toHaveTextContent(
-			"2 runs · median 1m 59s · p90 1m 59s",
-		);
-	});
-
-	it("says when the row limit left older runs out", async () => {
-		renderPlot({ totalCount: 7432, onRangeChange: vi.fn() });
-
-		const readout = await screen.findByTestId("scatter-plot-readout");
-		expect(readout).toHaveTextContent("Latest 2 of 7,432 runs, since");
-		expect(readout).toHaveTextContent(
-			"Narrow the date range to load older runs.",
-		);
-	});
-
-	it("falls back to a short id when the run's details fail to load", async () => {
-		server.use(
-			http.get(buildApiUrl("/flow_runs/:id"), () =>
-				HttpResponse.json({ detail: "gone" }, { status: 404 }),
-			),
-		);
-		const user = userEvent.setup();
-		renderPlot();
-
-		(await screen.findByRole("img")).focus();
-		await user.keyboard("{End}");
-
-		expect(await screen.findByText("crashed-")).toBeVisible();
-	});
-
-	it("shows a skeleton instead of a count while loading", async () => {
-		renderPlot({ history: undefined });
-
-		await screen.findByTestId("scatter-plot");
-		expect(screen.queryByTestId("scatter-plot-readout")).toBeNull();
-	});
-
-	it("says so when the window has no runs", async () => {
-		renderPlot({ history: [] });
-
-		expect(
-			await screen.findByText("No flow runs in this window"),
-		).toBeVisible();
-		expect(screen.getByRole("img")).toHaveAttribute("tabindex", "-1");
-	});
-
-	it("steps through runs in time order from the keyboard", async () => {
-		const user = userEvent.setup();
-		renderPlot();
-
-		const plot = await screen.findByRole("img");
-		plot.focus();
-		await user.keyboard("{Home}");
-
-		const readout = screen.getByTestId("scatter-plot-readout");
-		expect(readout).toHaveTextContent("1m 59s");
-		expect(await screen.findByText("nightly-etl")).toBeVisible();
-		expect(screen.getByText("brave-otter")).toBeVisible();
-
-		await user.keyboard("{ArrowRight}");
-		expect(readout).toHaveTextContent("0s");
-
-		await user.keyboard("{Escape}");
-		expect(readout).toHaveTextContent("2 runs");
-	});
-
-	it("opens the selected run with Enter", async () => {
-		const user = userEvent.setup();
-		const router = renderPlot();
-
-		const plot = await screen.findByRole("img");
-		plot.focus();
-		await user.keyboard("{End}{Enter}");
-
-		await waitFor(() =>
-			expect(router.state.location.pathname).toBe("/runs/flow-run/crashed-run"),
-		);
-	});
-
-	it("selects a run on tap and clears it on an empty tap", async () => {
-		renderPlot();
-
-		const plot = await screen.findByRole("img");
-		const readout = screen.getByTestId("scatter-plot-readout");
-		const tap = (x: number, y: number) => {
-			pointer("pointerDown", plot, { x, y, pointerType: "touch" });
-			pointer("pointerUp", plot, { x, y, pointerType: "touch" });
-		};
-
-		tap(MIDDLE_X + 10, LANE_Y - 10);
-		expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute(
-			"href",
-			"/runs/flow-run/crashed-run",
-		);
-
-		tap(60, 20);
-		expect(readout).toHaveTextContent("2 runs");
-	});
-
-	it("opens a run on mouse click", async () => {
-		const router = renderPlot();
-
-		const plot = await screen.findByRole("img");
-		pointer("pointerMove", plot, {
-			x: MIDDLE_X,
-			y: LANE_Y,
-			pointerType: "mouse",
-		});
-		expect(screen.getByTestId("scatter-plot-readout")).toHaveTextContent("0s");
-		pointer("pointerDown", plot, {
-			x: MIDDLE_X,
-			y: LANE_Y,
-			pointerType: "mouse",
-		});
-		pointer("pointerUp", plot, {
-			x: MIDDLE_X,
-			y: LANE_Y,
-			pointerType: "mouse",
+		render(<FlowRunsScatterPlot history={history} />, {
+			wrapper: createWrapper(),
 		});
 
-		await waitFor(() =>
-			expect(router.state.location.pathname).toBe("/runs/flow-run/crashed-run"),
-		);
+		expect(screen.getByTestId("scatter-plot")).toBeInTheDocument();
 	});
 
-	it("zooms to the span dragged across", async () => {
-		const onRangeChange =
-			vi.fn<(range: { startDate: Date; endDate: Date }) => void>();
-		renderPlot({ onRangeChange });
-
-		const plot = await screen.findByRole("img");
-		pointer("pointerDown", plot, { x: 52, y: 100, pointerType: "mouse" });
-		pointer("pointerMove", plot, { x: 200, y: 104, pointerType: "mouse" });
-		pointer("pointerMove", plot, {
-			x: MIDDLE_X,
-			y: 104,
-			pointerType: "mouse",
-		});
-		pointer("pointerUp", plot, { x: MIDDLE_X, y: 104, pointerType: "mouse" });
-
-		expect(onRangeChange).toHaveBeenCalledTimes(1);
-		const [{ startDate, endDate }] = onRangeChange.mock.calls[0];
-		expect(startDate).toEqual(START);
-		expect(endDate).toEqual(new Date("2026-11-06T05:00:00Z"));
-	});
-
-	it("does not zoom on a vertical drag, which scrolls the page", async () => {
-		const onRangeChange = vi.fn();
-		renderPlot({ onRangeChange });
-
-		const plot = await screen.findByRole("img");
-		pointer("pointerDown", plot, { x: 200, y: 50, pointerType: "touch" });
-		pointer("pointerMove", plot, { x: 212, y: 150, pointerType: "touch" });
-		pointer("pointerUp", plot, { x: 212, y: 150, pointerType: "touch" });
-
-		expect(onRangeChange).not.toHaveBeenCalled();
-	});
-
-	it("filters to one state from the legend and restores the filter", async () => {
-		const user = userEvent.setup();
-		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();
-		renderPlot({
-			selectedStates: new Set(["Completed", "Crashed"]),
-			onSelectedStatesChange,
+	it("returns null when history is empty", () => {
+		const { container } = render(<FlowRunsScatterPlot history={[]} />, {
+			wrapper: createWrapper(),
 		});
 
-		const chip = await screen.findByRole("button", { name: /Crashed/ });
-		await user.click(chip);
-		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
-			new Set(["Crashed"]),
-		);
-		expect(chip).toHaveAttribute("aria-pressed", "true");
-
-		await user.click(chip);
-		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
-			new Set(["Completed", "Crashed"]),
-		);
-		expect(chip).toHaveAttribute("aria-pressed", "false");
+		expect(container.firstChild).toBeNull();
 	});
 
-	it("restores the filter from before the first chip after switching chips", async () => {
-		const user = userEvent.setup();
-		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();
-		renderPlot({
-			selectedStates: new Set(["Completed", "Crashed"]),
-			onSelectedStatesChange,
-		});
+	it("renders with custom start and end dates", () => {
+		const history = createFakeSimpleFlowRuns(5);
+		const startDate = new Date("2024-01-01");
+		const endDate = new Date("2024-01-31");
 
-		await user.click(await screen.findByRole("button", { name: /Crashed/ }));
-		const completedChip = screen.getByRole("button", { name: /Completed/ });
-		await user.click(completedChip);
-		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
-			new Set(["Completed", "Cached"]),
+		render(
+			<FlowRunsScatterPlot
+				history={history}
+				startDate={startDate}
+				endDate={endDate}
+			/>,
+			{ wrapper: createWrapper() },
 		);
 
-		await user.click(completedChip);
-		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
-			new Set(["Completed", "Crashed"]),
-		);
-		expect(completedChip).toHaveAttribute("aria-pressed", "false");
+		expect(screen.getByTestId("scatter-plot")).toBeInTheDocument();
 	});
 
-	it("keeps a chip for every counted state while one is selected", async () => {
-		const user = userEvent.setup();
-		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();
-		const counted = (
-			state_type: "COMPLETED" | "CRASHED",
-			count_runs: number,
-		) => ({
-			state_type,
-			state_name: state_type.charAt(0) + state_type.slice(1).toLowerCase(),
-			count_runs,
-			sum_estimated_run_time: 0,
-			sum_estimated_lateness: 0,
-		});
-		renderPlot({
-			history: [crashed],
-			selectedStates: new Set(["Crashed"]),
-			onSelectedStatesChange,
-			stateHistory: [
-				{
-					interval_start: START.toISOString(),
-					interval_end: END.toISOString(),
-					states: [counted("COMPLETED", 40), counted("CRASHED", 1)],
-				},
-			],
+	it("is hidden on small screens via CSS class", () => {
+		const history = createFakeSimpleFlowRuns(3);
+
+		render(<FlowRunsScatterPlot history={history} />, {
+			wrapper: createWrapper(),
 		});
 
-		expect(
-			await screen.findByRole("button", { name: /Crashed\s*1/ }),
-		).toHaveAttribute("aria-pressed", "true");
-		const completedChip = screen.getByRole("button", {
-			name: /Completed\s*40/,
-		});
-		expect(completedChip).toHaveAttribute("aria-pressed", "false");
+		const scatterPlot = screen.getByTestId("scatter-plot");
+		expect(scatterPlot).toHaveClass("hidden", "md:block");
+	});
+});
 
-		await user.click(completedChip);
-		expect(onSelectedStatesChange).toHaveBeenLastCalledWith(
-			new Set(["Completed", "Cached"]),
-		);
+describe("formatYAxisTick", () => {
+	it("returns '0s' for zero", () => {
+		expect(formatYAxisTick(0)).toBe("0s");
 	});
 
-	it("hides a state on shift-click", async () => {
-		const user = userEvent.setup();
-		const onSelectedStatesChange = vi.fn<(states: Set<FlowRunState>) => void>();
-		renderPlot({ onSelectedStatesChange });
-
-		await user.keyboard("{Shift>}");
-		await user.click(await screen.findByRole("button", { name: /Completed/ }));
-
-		const [states] = onSelectedStatesChange.mock.lastCall ?? [];
-		expect(states?.has("Completed")).toBe(false);
-		expect(states?.has("Cached")).toBe(false);
-		expect(states?.has("Crashed")).toBe(true);
+	it("formats sub-second values with decimal", () => {
+		expect(formatYAxisTick(0.5)).toBe("0.50s");
+		expect(formatYAxisTick(0.123)).toBe("0.12s");
 	});
 
-	it("shows a plain key when it cannot set the filter", async () => {
-		renderPlot({}, FlowRunsScatterPlot);
-
-		expect(await screen.findByText("Completed")).toBeVisible();
-		expect(screen.queryByRole("button", { name: /Completed/ })).toBeNull();
+	it("formats seconds", () => {
+		expect(formatYAxisTick(1)).toBe("1s");
+		expect(formatYAxisTick(30)).toBe("30s");
+		expect(formatYAxisTick(59)).toBe("59s");
 	});
 
-	it("leaves out runs scheduled after an open-ended window", async () => {
-		const scheduled: SimpleFlowRun = createFakeSimpleFlowRun({
-			state_type: "SCHEDULED",
-			timestamp: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-			duration: 0,
-		});
-		renderPlot({
-			history: [
-				{
-					...completed,
-					timestamp: new Date(Date.now() - 60_000).toISOString(),
-				},
-				scheduled,
-			],
-			startDate: undefined,
-			endDate: undefined,
-		});
+	it("formats minutes", () => {
+		expect(formatYAxisTick(60)).toBe("1m");
+		expect(formatYAxisTick(120)).toBe("2m");
+		expect(formatYAxisTick(3599)).toBe("59m");
+	});
 
-		expect(
-			await screen.findByText(/1 more scheduled after this window\./),
-		).toBeVisible();
-		expect(screen.getByTestId("scatter-plot-readout")).toHaveTextContent(
-			"1 run",
-		);
-		expect(screen.queryByRole("button", { name: /Scheduled/ })).toBeNull();
+	it("formats hours", () => {
+		expect(formatYAxisTick(3600)).toBe("1h");
+		expect(formatYAxisTick(7200)).toBe("2h");
+		expect(formatYAxisTick(86399)).toBe("23h");
+	});
+
+	it("formats days", () => {
+		expect(formatYAxisTick(86400)).toBe("1d");
+		expect(formatYAxisTick(172800)).toBe("2d");
+		expect(formatYAxisTick(604800)).toBe("7d");
+	});
+
+	it("formats years", () => {
+		expect(formatYAxisTick(31536000)).toBe("1y");
+		expect(formatYAxisTick(63072000)).toBe("2y");
+	});
+});
+
+describe("generateNiceTimeTicks", () => {
+	it("returns single tick for zero or negative range", () => {
+		const start = Date.now();
+		expect(generateNiceTimeTicks(start, start, 5)).toEqual([start]);
+		expect(generateNiceTimeTicks(start, start - 1000, 5)).toEqual([start]);
+	});
+
+	it("generates ticks aligned to second boundaries for short ranges", () => {
+		const start = new Date("2024-01-15T12:00:00.000Z").getTime();
+		const end = new Date("2024-01-15T12:00:10.000Z").getTime();
+		const ticks = generateNiceTimeTicks(start, end, 5);
+
+		expect(ticks.length).toBeGreaterThan(0);
+		ticks.forEach((tick) => {
+			expect(tick % 1000).toBe(0);
+		});
+	});
+
+	it("generates ticks aligned to minute boundaries for minute ranges", () => {
+		const start = new Date("2024-01-15T12:00:00.000Z").getTime();
+		const end = new Date("2024-01-15T12:30:00.000Z").getTime();
+		const ticks = generateNiceTimeTicks(start, end, 5);
+
+		expect(ticks.length).toBeGreaterThan(0);
+		ticks.forEach((tick) => {
+			expect(tick % (60 * 1000)).toBe(0);
+		});
+	});
+
+	it("generates ticks aligned to hour boundaries for hour ranges", () => {
+		const start = new Date("2024-01-15T00:00:00.000Z").getTime();
+		const end = new Date("2024-01-15T12:00:00.000Z").getTime();
+		const ticks = generateNiceTimeTicks(start, end, 5);
+
+		expect(ticks.length).toBeGreaterThan(0);
+		ticks.forEach((tick) => {
+			expect(tick % (60 * 60 * 1000)).toBe(0);
+		});
+	});
+
+	it("generates ticks aligned to day boundaries for multi-day ranges", () => {
+		const start = new Date("2024-01-01T00:00:00.000Z").getTime();
+		const end = new Date("2024-01-08T00:00:00.000Z").getTime();
+		const ticks = generateNiceTimeTicks(start, end, 5);
+
+		expect(ticks.length).toBeGreaterThan(0);
+		ticks.forEach((tick) => {
+			expect(tick % (24 * 60 * 60 * 1000)).toBe(0);
+		});
+	});
+
+	it("returns at least one tick even for very small ranges", () => {
+		const start = Date.now();
+		const end = start + 100;
+		const ticks = generateNiceTimeTicks(start, end, 5);
+
+		expect(ticks.length).toBeGreaterThanOrEqual(1);
+	});
+});
+
+describe("createXAxisTickFormatter", () => {
+	const formatter = createXAxisTickFormatter();
+
+	it("formats milliseconds when crossing millisecond boundary", () => {
+		const date = new Date("2024-01-15T12:30:45.123Z");
+		const result = formatter(date.getTime());
+		expect(result).toBe(".123");
+	});
+
+	it("formats seconds when crossing second boundary", () => {
+		const date = new Date("2024-01-15T12:30:45.000Z");
+		const result = formatter(date.getTime());
+		expect(result).toBe(":45");
+	});
+
+	it("formats hour:minute when crossing minute boundary", () => {
+		const date = new Date("2024-01-15T12:30:00.000Z");
+		const result = formatter(date.getTime());
+		expect(result).toMatch(/12:30|30/);
+	});
+
+	it("formats hour when crossing hour boundary", () => {
+		const date = new Date("2024-01-15T12:00:00.000Z");
+		const result = formatter(date.getTime());
+		expect(result).toMatch(/12|PM|AM|noon/i);
+	});
+
+	it("formats weekday and day when crossing day boundary", () => {
+		const date = new Date("2024-01-15T00:00:00.000Z");
+		const result = formatter(date.getTime());
+		expect(result).toMatch(/Mon|15|Jan/i);
+	});
+
+	it("formats month when crossing month boundary", () => {
+		const date = new Date("2024-06-01T00:00:00.000Z");
+		const result = formatter(date.getTime());
+		expect(result).toMatch(/June|Jun|Sat|1/i);
+	});
+
+	it("formats year when crossing year boundary", () => {
+		const date = new Date("2024-01-01T00:00:00.000Z");
+		const result = formatter(date.getTime());
+		expect(result).toMatch(/2024|January|Jan|Mon|1/i);
 	});
 });
