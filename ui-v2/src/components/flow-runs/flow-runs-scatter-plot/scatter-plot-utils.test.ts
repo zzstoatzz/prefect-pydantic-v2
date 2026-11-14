@@ -129,11 +129,21 @@ describe("resolveTimeWindow", () => {
 		expect(window.upcoming).toBe(0);
 	});
 
-	it("opens a window around a single run", () => {
+	it("opens an hour either side of a single run", () => {
 		const window = resolveTimeWindow({ runs: [runAt(0)], now: NOW });
 
-		expect(window.start).toBeLessThan(NOW);
-		expect(window.end).toBeGreaterThan(NOW);
+		expect(window).toEqual({
+			start: at(-1).getTime(),
+			end: at(1).getTime(),
+			upcoming: 0,
+		});
+	});
+
+	it("shows the hour before now when there are no runs", () => {
+		const window = resolveTimeWindow({ runs: [], now: NOW });
+
+		expect(window.end).toBe(NOW);
+		expect(window.start).toBe(at(-1).getTime() - 0.02 * HOUR);
 	});
 });
 

@@ -21,6 +21,7 @@ const SECOND = 1;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+const HOUR_MS = HOUR * 1000;
 
 /** Drawn first to last, so failures sit on top of the successes around them. */
 export const STATE_DRAW_ORDER = [
@@ -158,10 +159,10 @@ export const resolveTimeWindow = ({
 	const inWindow = times.filter((time) => time <= end);
 	const start =
 		startDate?.getTime() ??
-		(inWindow.length > 0 ? Math.min(...inWindow) : end - HOUR);
+		(inWindow.length > 0 ? Math.min(...inWindow) : end - HOUR_MS);
 	const upcoming = times.length - inWindow.length;
 	if (start >= end) {
-		return { start: end - HOUR, end: end + HOUR, upcoming };
+		return { start: end - HOUR_MS, end: end + HOUR_MS, upcoming };
 	}
 	if (startDate) return { start, end, upcoming };
 	return { start: start - (end - start) * 0.02, end, upcoming };
